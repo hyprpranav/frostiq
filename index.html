@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Simple Temperature Monitoring and Relay Control System for ESP32 with Web Serial API">
+  <title>ESP32 Temperature & Relay Control</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Unsupported Browser Warning Banner -->
+  <div id="unsupported-banner" class="alert-banner hidden" role="alert">
+    <div class="banner-content">
+      <svg class="banner-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="10"></circle>
+        <line x1="12" y1="8" x2="12" y2="12"></line>
+        <line x1="12" y1="16" x2="12.01" y2="16"></line>
+      </svg>
+      <div class="banner-text">
+        <strong>Web Serial API Not Supported:</strong> Your current browser cannot connect to USB Serial ports. Please use desktop Google Chrome, Microsoft Edge, or Opera over HTTPS or localhost.
+      </div>
+    </div>
+  </div>
+
+  <div class="dashboard-wrapper">
+    <!-- Header -->
+    <header class="dashboard-header">
+      <div class="brand-group">
+        <div class="brand-icon-wrapper">
+          <svg class="brand-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path>
+          </svg>
+        </div>
+        <div>
+          <h1 class="brand-title">ESP32 ThermoRelay</h1>
+          <p class="brand-subtitle">Real-time Temperature Monitoring & Actuator Control</p>
+        </div>
+      </div>
+
+      <!-- Connection Control Bar -->
+      <div class="connection-bar">
+        <div class="status-indicator-badge disconnected" id="connection-badge">
+          <span class="status-dot"></span>
+          <span id="connection-status-text">Disconnected</span>
+        </div>
+
+        <div class="serial-controls">
+          <div class="baud-selector-group">
+            <label for="baud-rate-select" class="control-label">Baud:</label>
+            <select id="baud-rate-select" class="form-select" title="Serial Baud Rate">
+              <option value="9600">9600</option>
+              <option value="57600">57600</option>
+              <option value="115200" selected>115200</option>
+            </select>
+          </div>
+
+          <button id="btn-connect" class="btn btn-primary" title="Connect to ESP32 Serial Port">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+            </svg>
+            Connect ESP32
+          </button>
+
+          <button id="btn-disconnect" class="btn btn-secondary hidden" title="Disconnect Serial Port">
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+            Disconnect
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <!-- Notification Toast / Alert -->
+    <div id="toast-message" class="toast-message hidden" role="status">
+      <span id="toast-text">Alert message</span>
+      <button id="btn-close-toast" class="toast-close" aria-label="Close notification">&times;</button>
+    </div>
+
+    <!-- Main Grid -->
+    <main class="dashboard-grid">
+      <!-- Card 1: Temperature -->
+      <section class="card metric-card" id="temp-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-badge temp-badge">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"></path>
+              </svg>
+            </span>
+            <h2 class="card-title">Temperature</h2>
+          </div>
+          <span class="sensor-pill sensor-ok" id="temp-sensor-pill">DHT22 Ready</span>
+        </div>
+
+        <div class="card-body">
+          <div class="primary-metric">
+            <span class="metric-value" id="temp-value">--.-</span>
+            <span class="metric-unit">°C</span>
+          </div>
+          <div class="secondary-metric">
+            <span id="temp-fahrenheit">--.- °F</span>
+            <span class="metric-divider">•</span>
+            <span id="temp-category">Waiting for data...</span>
+          </div>
+          <div class="gauge-container">
+            <div class="gauge-bar-bg">
+              <div class="gauge-bar-fill temp-fill" id="temp-bar" style="width: 0%;"></div>
+            </div>
+            <div class="gauge-labels">
+              <span>0°C</span>
+              <span>25°C</span>
+              <span>50°C</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Card 2: Humidity -->
+      <section class="card metric-card" id="humidity-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-badge humidity-badge">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"></path>
+              </svg>
+            </span>
+            <h2 class="card-title">Relative Humidity</h2>
+          </div>
+          <span class="sensor-pill sensor-ok" id="humidity-sensor-pill">DHT22 Ready</span>
+        </div>
+
+        <div class="card-body">
+          <div class="primary-metric">
+            <span class="metric-value" id="humidity-value">--.-</span>
+            <span class="metric-unit">%</span>
+          </div>
+          <div class="secondary-metric">
+            <span id="humidity-category">Waiting for data...</span>
+          </div>
+          <div class="gauge-container">
+            <div class="gauge-bar-bg">
+              <div class="gauge-bar-fill humidity-fill" id="humidity-bar" style="width: 0%;"></div>
+            </div>
+            <div class="gauge-labels">
+              <span>0%</span>
+              <span>50%</span>
+              <span>100%</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Card 3: Relay Control -->
+      <section class="card relay-card" id="relay-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-badge relay-badge">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+                <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+                <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+              </svg>
+            </span>
+            <h2 class="card-title">Relay Actuator</h2>
+          </div>
+          <span class="status-tag tag-off" id="relay-state-tag">RELAY OFF</span>
+        </div>
+
+        <div class="card-body relay-card-body">
+          <div class="relay-state-visual">
+            <div class="relay-glow-indicator off" id="relay-indicator">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+                <line x1="12" y1="2" x2="12" y2="12"></line>
+              </svg>
+            </div>
+            <div class="relay-meta">
+              <span class="relay-label">Current State</span>
+              <span class="relay-status-large" id="relay-status-text">OFF</span>
+            </div>
+          </div>
+
+          <div class="relay-actions">
+            <button id="btn-relay-on" class="btn btn-action btn-on" disabled title="Turn Relay ON">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+                <line x1="12" y1="2" x2="12" y2="12"></line>
+              </svg>
+              Relay ON
+            </button>
+            <button id="btn-relay-off" class="btn btn-action btn-off" disabled title="Turn Relay OFF">
+              <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+              </svg>
+              Relay OFF
+            </button>
+          </div>
+          <p class="relay-subnote" id="relay-subnote">Connect to ESP32 to send serial commands</p>
+        </div>
+      </section>
+    </main>
+
+    <!-- Bottom Section: Live Serial Feed & Controls -->
+    <section class="card terminal-section">
+      <div class="card-header terminal-header">
+        <div class="card-title-group">
+          <span class="card-badge terminal-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="4 17 10 11 4 5"></polyline>
+              <line x1="12" y1="19" x2="20" y2="19"></line>
+            </svg>
+          </span>
+          <h2 class="card-title">Serial Stream & Debug Console</h2>
+        </div>
+        <div class="terminal-actions">
+          <span class="last-update-text" id="last-update">Last packet: Never</span>
+          <label class="toggle-label" title="Simulate incoming sensor data for testing without hardware">
+            <input type="checkbox" id="demo-mode-toggle">
+            <span class="toggle-slider"></span>
+            Demo Mode
+          </label>
+          <button id="btn-clear-terminal" class="btn btn-sm btn-ghost" title="Clear console log">Clear</button>
+        </div>
+      </div>
+
+      <div class="terminal-body" id="serial-terminal" aria-live="polite">
+        <div class="log-line system-line">[System] Welcome to ESP32 ThermoRelay. Click "Connect ESP32" or toggle "Demo Mode" to test.</div>
+      </div>
+
+      <div class="terminal-footer">
+        <div class="manual-command-box">
+          <input type="text" id="custom-command-input" class="form-input" placeholder="Custom serial command (e.g. ON, OFF)..." disabled>
+          <button id="btn-send-command" class="btn btn-sm btn-secondary" disabled>Send</button>
+        </div>
+        <div class="hardware-info-hint">
+          JSON Protocol: <code>{"temperature":26.5,"humidity":60.2,"relay":"ON"}</code>
+        </div>
+      </div>
+    </section>
+
+    <!-- Hardware Configuration Info Box -->
+    <footer class="dashboard-footer">
+      <div class="footer-pins">
+        <span class="pin-tag"><strong>DHT22 Data:</strong> GPIO 4</span>
+        <span class="pin-tag"><strong>Relay Control:</strong> GPIO 5</span>
+        <span class="pin-tag"><strong>Baud Rate:</strong> 115200 bps</span>
+        <span class="pin-tag"><strong>Protocol:</strong> Web Serial API</span>
+      </div>
+      <p class="footer-note">Designed for ESP32 microcontrollers with DHT22 sensor and active relay module.</p>
+    </footer>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
